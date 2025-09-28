@@ -18,15 +18,24 @@ namespace PlagiarismDetection.Services
             var client = _httpFactory.CreateClient();
             var url = $"http://export.arxiv.org/api/query?search_query={Uri.EscapeDataString(query)}&start=0&max_results={maxResults}";
             var resp = await client.GetStringAsync(url);
+
             var doc = XDocument.Parse(resp);
-            var entries = doc.Descendants("entry").Select(e => new Document
-            {
-                Id = e.Element("id")?.Value ?? Guid.NewGuid().ToString(),
-                Title = e.Element("title")?.Value?.Trim() ?? string.Empty,
-                Authors = e.Elements("author").Select(a => a.Element("name")?.Value?.Trim() ?? string.Empty).ToArray(),
-                Text = e.Element("summary")?.Value?.Trim() ?? string.Empty,
-                Source = "arXiv"
-            });
+
+            // Atom namespace
+            XNamespace ns = "http://www.w3.org/2005/Atom";
+
+            var entries = doc.Descendants(ns + "entry")
+                .Select(e => new Document
+                {
+                    Id = e.Element(ns + "id")?.Value ?? Guid.NewGuid().ToString(),
+                    Title = e.Element(ns + "title")?.Value?.Trim() ?? string.Empty,
+                    Authors = e.Elements(ns + "author")
+                               .Select(a => a.Element(ns + "name")?.Value?.Trim() ?? string.Empty)
+                               .ToArray(),
+                    Text = e.Element(ns + "summary")?.Value?.Trim() ?? string.Empty,
+                    Source = "arXiv"
+                });
+
             return entries;
         }
 

@@ -1,43 +1,46 @@
 ﻿using Newtonsoft.Json;
-using System.Net.Http.Headers;
+using System.Text;
 
 namespace PlagiarismDetection.Services
 {
     public class EmbeddingService
     {
-        private readonly IHttpClientFactory _httpFactory;
-        private readonly string? _openAiKey;
+        private readonly HttpClient _httpClient;
 
-        public EmbeddingService(IHttpClientFactory httpFactory, IConfiguration config)
+        public EmbeddingService(HttpClient httpClient)
         {
-            _httpFactory = httpFactory;
-            _openAiKey = config["OPENAI_API_KEY"]; // optional
+            _httpClient = httpClient;
+            _httpClient.BaseAddress = new System.Uri("http://localhost:11434"); // Ollama API
         }
 
-        // Option A: Call OpenAI Embeddings API (if key provided)
         public async Task<float[]> GetEmbeddingOpenAiAsync(string text)
         {
-            if (string.IsNullOrEmpty(_openAiKey)) throw new InvalidOperationException("OPENAI_API_KEY not set.");
-            var client = _httpFactory.CreateClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _openAiKey);
-            var payload = new { input = text, model = "text-embedding-3-small" };
-            var resp = await client.PostAsync("https://api.openai.com/v1/embeddings", new StringContent(JsonConvert.SerializeObject(payload), System.Text.Encoding.UTF8, "application/json"));
-            resp.EnsureSuccessStatusCode();
-            var j = JsonConvert.DeserializeObject<dynamic>(await resp.Content.ReadAsStringAsync());
-            var vec = ((IEnumerable<object>)j.data[0].embedding).Select(x => Convert.ToSingle(x)).ToArray();
-            return vec;
-        }
+            var payload = new
+            {
+                model = "nomic-embed-text",
+                prompt = text
+            };
 
-        // Option B: Call a local Python embedding microservice (if user runs one)
-        public async Task<float[]> GetEmbeddingLocalAsync(string text, string localUrl = "http://localhost:5001/embed")
-        {
-            var client = _httpFactory.CreateClient();
-            var payload = new { text };
-            var resp = await client.PostAsync(localUrl, new StringContent(JsonConvert.SerializeObject(payload), System.Text.Encoding.UTF8, "application/json"));
+            var json = JsonConvert.SerializeObject(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var resp = await _httpClient.PostAsync("/api/embeddings", content);
             resp.EnsureSuccessStatusCode();
-            var j = JsonConvert.DeserializeObject<dynamic>(await resp.Content.ReadAsStringAsync());
-            var arr = ((IEnumerable<object>)j.embedding).Select(x => Convert.ToSingle(x)).ToArray();
-            return arr;
+
+            var body = await resp.Content.ReadAsStringAsync();
+
+            var result = JsonConvert.DeserializeObject<OllamaEmbeddingResponse>(body);
+
+            if (result?.Embedding == null)
+                throw new System.Exception("Embedding not found in Ollama response.");
+
+            return [.. result.Embedding];
         }
+    }
+
+    public class OllamaEmbeddingResponse
+    {
+        [JsonProperty("embedding")]
+        public List<float> Embedding { get; set; }
     }
 }

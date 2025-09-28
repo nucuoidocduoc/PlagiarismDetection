@@ -14,7 +14,7 @@ namespace PlagiarismDetection.Services
 
         public IEnumerable<Chunk> ChunkDocument(Document doc)
         {
-            var words = doc.Text.Split(new char[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            var words = doc.Text.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
             var chunks = new List<Chunk>();
             for (int i = 0, idx = 0; i < words.Length; i += _chunkSize, idx++)
             {

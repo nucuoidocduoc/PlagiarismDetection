@@ -24,9 +24,9 @@ namespace PlagiarismDetection.Controllers
         }
 
         [HttpPost("ingest/arxiv")]
-        public async Task<IActionResult> IngestArxiv([FromQuery] string q, [FromQuery] int max = 50)
+        public async Task<IActionResult> IngestArxiv([FromBody] IngestRequest request, [FromQuery] int max = 50)
         {
-            var docs = await _crawler.FetchArxivAsync(q, max);
+            var docs = await _crawler.FetchArxivAsync(request.Text, max);
             foreach (var d in docs)
             {
                 var chunks = _processor.ChunkDocument(d);
@@ -39,6 +39,11 @@ namespace PlagiarismDetection.Controllers
                 }
             }
             return Ok(new { ingested = docs.Count() });
+        }
+
+        public class IngestRequest
+        {
+            public string Text { get; set; } = string.Empty;
         }
 
         [HttpPost("check")]
@@ -54,7 +59,7 @@ namespace PlagiarismDetection.Controllers
                 var hits = await _vectorStore.QueryAsync(v, topK: req.TopK ?? 5);
                 foreach (var h in hits)
                 {
-                    matchesAll.Add(new { ChunkId = c.Id, Score = h.Score, Source = (string)h.Metadata["Title"], Text = h.Metadata["payloadText"] ?? h.Metadata["text"] ?? "" });
+                    matchesAll.Add(new { ChunkId = c.Id, h.Score, Source = (string)h.Metadata["Title"], Text = h.Metadata["payloadText"] ?? h.Metadata["text"] ?? "" });
                 }
             }
             var html = _report.RenderHtml(doc.Text, matchesAll);
