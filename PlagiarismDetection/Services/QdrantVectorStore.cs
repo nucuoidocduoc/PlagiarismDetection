@@ -1,86 +1,72 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Text;
+﻿using Qdrant.Client;
+using Qdrant.Client.Grpc;
 
 namespace PlagiarismDetection.Services
 {
     public class QdrantVectorStore : IVectorStore
     {
-        private readonly IHttpClientFactory _httpFactory;
-        private readonly string _qdrantUrl;
         private readonly string _collection = "plagiarism_chunks";
 
-        public QdrantVectorStore(IHttpClientFactory httpFactory, IConfiguration config)
+        public QdrantVectorStore(IConfiguration config)
         {
-            _httpFactory = httpFactory;
-            _qdrantUrl = config["QDRANT_URL"] ?? "http://localhost:6333";
             EnsureCollectionAsync().GetAwaiter().GetResult();
         }
 
-        private HttpClient CreateClient()
+        private QdrantClient CreateClient()
         {
-            var c = _httpFactory.CreateClient();
-            return c;
+            return new QdrantClient("localhost", 6334);
         }
 
         private async Task EnsureCollectionAsync()
         {
             var client = CreateClient();
-            var url = $"{_qdrantUrl}/collections/{_collection}";
-            var r = await client.GetAsync(url);
-            if (!r.IsSuccessStatusCode)
+            try
             {
-                var body = new { vectors = new { size = 768, distance = "Cosine" } }; // size must match embedding size
-                _ = await client.PutAsync(url, new StringContent(JsonConvert.SerializeObject(body), System.Text.Encoding.UTF8, "application/json"));
+                var collectionInfo = await client.GetCollectionInfoAsync(_collection);
+
+                Console.WriteLine($"Collection {_collection} đã tồn tại");
+            }
+            catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
+            {
+                await client.CreateCollectionAsync(
+                    collectionName: _collection,
+                    vectorsConfig: new VectorParams
+                    {
+                        Size = 768,
+                        Distance = Distance.Cosine
+                    }
+                );
+                Console.WriteLine($"Đã tạo collection {_collection}");
             }
         }
 
         public async Task UpsertAsync(string id, float[] vector, object metadata)
         {
             var client = CreateClient();
-            var url = $"{_qdrantUrl}/collections/{_collection}/points?wait=true";
-            var payload = new
+            var point = new PointStruct()
             {
-                points = new[] {
-                    new QdrantPoint {Id= 1,Vector= vector, Payload = metadata }
-                }
+                Id = new PointId() { Uuid = id },
+                Vectors = vector,
             };
 
-            var json = JsonConvert.SerializeObject(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            foreach (var kv in metadata.ToQdrantKeyValue())
+            {
+                point.Payload.Add(kv.Key, kv.Value);
+            }
 
-            var resp = await client.PutAsync(url, content);
-            resp.EnsureSuccessStatusCode();
+            _ = await client.UpsertAsync(_collection, [point]);
         }
 
-        public class QdrantPoint
-        {
-            [JsonProperty("id")]
-            public int Id { get; set; }
-
-            [JsonProperty("vector")]
-            public float[] Vector { get; set; }
-
-            [JsonProperty("payload")]
-            public object Payload { get; set; }
-        }
-
-        public async Task<IEnumerable<(string Id, float Score, dynamic Metadata)>> QueryAsync(float[] vector, int topK = 10)
+        public async Task<IEnumerable<(string Id, float Score, dynamic Metadata)>> QueryAsync(float[] vector, ulong topK = 10)
         {
             var client = CreateClient();
-            var url = $"{_qdrantUrl}/collections/{_collection}/points/search";
-            var payload = new { vector, limit = topK };
-            var resp = await client.PostAsync(url, new StringContent(JsonConvert.SerializeObject(payload), System.Text.Encoding.UTF8, "application/json"));
-            var txt = await resp.Content.ReadAsStringAsync();
-            var j = JObject.Parse(txt);
+            var points = await client.SearchAsync(_collection, vector, limit: topK);
             var results = new List<(string, float, dynamic)>();
-            foreach (var p in j["result"])
+            foreach (var point in points)
             {
-                var id = p["id"].ToString();
-                var score = (float)p["score"];
-                var payloadObj = p["payload"];
-                results.Add((id, score, payloadObj));
+                results.Add((point.Id.Uuid.ToString(), point.Score, point.Payload.ToSepicificDictionary()));
             }
+
             return results;
         }
     }

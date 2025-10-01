@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using PlagiarismDetection.Models;
 using PlagiarismDetection.Services;
 
@@ -59,7 +60,7 @@ namespace PlagiarismDetection.Controllers
                 var hits = await _vectorStore.QueryAsync(v, topK: req.TopK ?? 5);
                 foreach (var h in hits)
                 {
-                    matchesAll.Add(new { ChunkId = c.Id, h.Score, Source = (string)h.Metadata["Title"], Text = h.Metadata["payloadText"] ?? h.Metadata["text"] ?? "" });
+                    matchesAll.Add(new { ChunkId = c.Id, h.Score, Source = (string)h.Metadata["Title"], Text = JsonConvert.SerializeObject(h.Metadata) });
                 }
             }
             var html = _report.RenderHtml(doc.Text, matchesAll);
@@ -71,6 +72,6 @@ namespace PlagiarismDetection.Controllers
     {
         public string? Title { get; set; }
         public string Text { get; set; } = string.Empty;
-        public int? TopK { get; set; }
+        public ulong? TopK { get; set; }
     }
 }
