@@ -32,7 +32,7 @@ namespace PlagiarismDetection.Services
                     collectionName: _collection,
                     vectorsConfig: new VectorParams
                     {
-                        Size = 768,
+                        Size = 1024,
                         Distance = Distance.Cosine
                     }
                 );

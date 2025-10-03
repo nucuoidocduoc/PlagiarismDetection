@@ -17,7 +17,7 @@ namespace PlagiarismDetection.Services
         {
             var payload = new
             {
-                model = "nomic-embed-text",
+                model = "mxbai-embed-large",
                 prompt = text
             };
 

@@ -66,6 +66,26 @@ namespace PlagiarismDetection.Controllers
             var html = _report.RenderHtml(doc.Text, matchesAll);
             return Content(html, "text/html");
         }
+
+        [HttpGet("check")]
+        public async Task<IActionResult> GetCheck([FromQuery] string search, [FromQuery] string title)
+        {
+            // chunk input
+            var doc = new Document { Id = Guid.NewGuid().ToString(), Title = title ?? "(input)", Text = search, Source = "uploaded" };
+            var chunks = _processor.ChunkDocument(doc).ToList();
+            var matchesAll = new List<dynamic>();
+            foreach (var c in chunks)
+            {
+                var v = await _embedder.GetEmbeddingOpenAiAsync(c.Text);
+                var hits = await _vectorStore.QueryAsync(v, topK: 10);
+                foreach (var h in hits)
+                {
+                    matchesAll.Add(new { ChunkId = c.Id, h.Score, Source = (string)h.Metadata["Title"], Text = JsonConvert.SerializeObject(h.Metadata) });
+                }
+            }
+            var html = _report.RenderHtml(doc.Text, matchesAll);
+            return Content(html, "text/html");
+        }
     }
 
     public class CheckRequest
