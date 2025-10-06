@@ -14,14 +14,21 @@ namespace PlagiarismDetection.Controllers
         private readonly EmbeddingService _embedder;
         private readonly IVectorStore _vectorStore;
         private readonly ReportService _report;
+        private readonly SearchService _searchService;
 
-        public PlagiarismController(CrawlerService crawler, TextProcessor processor, EmbeddingService embedder, IVectorStore vectorStore, ReportService report)
+        public PlagiarismController(CrawlerService crawler,
+            TextProcessor processor,
+            EmbeddingService embedder,
+            IVectorStore vectorStore,
+            ReportService report,
+            SearchService searchService)
         {
             _crawler = crawler;
             _processor = processor;
             _embedder = embedder;
             _vectorStore = vectorStore;
             _report = report;
+            _searchService = searchService;
         }
 
         [HttpPost("ingest/arxiv")]
@@ -86,6 +93,31 @@ namespace PlagiarismDetection.Controllers
             var html = _report.RenderHtml(doc.Text, matchesAll);
             return Content(html, "text/html");
         }
+
+        [HttpGet("search")]
+        public async Task<IActionResult> GetDuplicateProject([FromQuery] string textSearch, [FromQuery] SearchType? type)
+        {
+            if (string.IsNullOrEmpty(textSearch))
+            {
+                return BadRequest();
+            }
+
+            if (type == null)
+            {
+                return BadRequest();
+            }
+
+            var searchFiled = type == SearchType.Title ? "title" : "abstract";
+            var projects = await _searchService.SearchProject(searchFiled, textSearch);
+
+            return Ok(projects);
+        }
+    }
+
+    public enum SearchType
+    {
+        Title,
+        Content
     }
 
     public class CheckRequest
